@@ -11,8 +11,7 @@ import os
 import pathlib as Path
 import numpy as np
 import pandas as pd
-#import nibabel as nib
-#import SimpleITK as sitk
+import nibabel as nib
+import SimpleITK as sitk
 from joblib import Parallel, delayed
 from tqdm import tqdm
-import tensorflow as tf

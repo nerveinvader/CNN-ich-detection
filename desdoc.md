@@ -25,7 +25,23 @@ Output:
 
 ## Data analysis:
 Qure.ai CQ500 dataset
-* DICOM files
+* Labels:
+	* Patient ID matching:
+* DICOM files:
+	* Slice count per DICOM file:
+	* Thickness:
+	* Resolution:
+	* Metadata:
+* Class balance:
+* Image windows:
+	* Brain, Bone, Subdural windows (stack like RGB)
+
+read.csv:
+* Each row corresponds to one patient (study) = one Folder per patient with DICOM
+* Normal, ICH (IPH, IVH, SAH, SDH, EDH, Other)
+*
+
+Testing one file before moving to preprocessing.
 
 Kaggle GPU free plan
 
