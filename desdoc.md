@@ -25,6 +25,7 @@ Output:
 
 ## Data analysis:
 Qure.ai CQ500 dataset
+* Directory: "qct01/CQ500CT### CQ500CT ###"
 * Labels:
 	* Patient ID matching
 * DICOM files:
