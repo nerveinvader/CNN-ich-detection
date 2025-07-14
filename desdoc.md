@@ -26,20 +26,28 @@ Output:
 ## Data analysis:
 Qure.ai CQ500 dataset
 * Labels:
-	* Patient ID matching:
+	* Patient ID matching
 * DICOM files:
-	* Slice count per DICOM file:
-	* Thickness:
-	* Resolution:
-	* Metadata:
-* Class balance:
-* Image windows:
+	* Slice count per DICOM file
+	* Thickness
+	* Resolution
+	* Metadata
+* Class balance
+* Image windows
 	* Brain, Bone, Subdural windows (stack like RGB)
 
 read.csv:
 * Each row corresponds to one patient (study) = one Folder per patient with DICOM
-* Normal, ICH (IPH, IVH, SAH, SDH, EDH, Other)
-*
+* Normal, ICH (IPH, IVH, SAH, SDH, EDH, Other) per radiologist
+* Only 1 Rad agrees = 41 scans -> we can check with a radiologist
+* Only 2 Rads agree = 37 scans
+* All  3 Rads agree = 168 scans
+* 491 patients
+* B1 is real-world appearance of ICH in a 30 days period	=~ 214 (050 - 23%)
+* B2 is enriched in ICH (double checked)					=~ 277 (196 - 70%)
+* No missing readings or values
+* "name" is the identifier for each patient file
+* Extracted ICH information "compact_reads.csv" file for easier traininig
 
 Testing one file before moving to preprocessing.
 
