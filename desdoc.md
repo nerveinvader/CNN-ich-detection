@@ -1,5 +1,8 @@
 # Design Document:
 
+## TO-DO List:
+() analyze one dicom file to get the hang of the whole ds.
+
 ## Big picture:
 Problem:
 * Binary scan-level classification (does the CT slice show intracranial hemorrhage - ICH?)
