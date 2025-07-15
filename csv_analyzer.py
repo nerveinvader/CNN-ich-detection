@@ -54,7 +54,7 @@ compact_reads = pd.read_csv("csv-files/compact_reads.csv")
 
 #%%
 #
-compact_reads.head()
+# compact_reads.head()
 
 #%%
 # loading data with glob module (file and folders are inconsistent with dataset)
