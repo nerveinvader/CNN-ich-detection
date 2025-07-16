@@ -71,7 +71,7 @@ for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
 	DIR = fp
 	for dcm_file in glob.glob(f"{DIR}/*/*/*.dcm", recursive=True):
 		print(dcm_file)
-		ds = pydicom.dcmread(dcm_file, stop_before_pixels=True)	# metadata only
+		ds: pydicom.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only
 		records.append({
 			"name": pid,
 			"series_uid": ds.SeriesInstanceUID,

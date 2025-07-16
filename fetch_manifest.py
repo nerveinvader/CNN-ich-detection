@@ -7,6 +7,7 @@ Author:			nerveinvader
 import os, re, glob
 import pandas as pd
 import pydicom
+import pydicom.dataset
 
 ## > Get dicom files
 ### Pattern of the directory:
@@ -26,7 +27,7 @@ for fp in glob.glob(f"{DATA_PATH}/qct*/*", recursive=True):
 	print(f"CQ500CT{pid}")		# Print patient name
 	PID_DIR = fp				## Directory to path for the next step >
 	for dcm_file in glob.glob(f"{PID_DIR}/*/*/*.dcm", recursive=True):
-		ds = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only - no pixel data
+		ds: pydicom.dataset.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only - no pixel data
 		# Write into records >
 		records.append({
 			"name": pid,
