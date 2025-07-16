@@ -57,7 +57,8 @@ cq500ct_manifest.parquet:
 * Contains *name, *series_uid, *instance_num, path, thickness (mm), series description
 * Fast loading for future references
 
-Testing one file before moving to preprocessing.
+Testing one file before moving to preprocessing:
+* data_loader.py
 
 Kaggle GPU free plan
 
