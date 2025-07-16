@@ -33,19 +33,21 @@ class CQ500Dataset(torch.utils.data.Dataset):
 		""" Report the number of studies (not slices) as `int`."""
 		return len(self.ids)
 
-	def __getitem__(self, idx):
+	def __getitem__(self, idx) -> tuple:
 		study = self.ids[idx]					## Pick a study (not slices)
-		df = self.mf[self.mf['name'] == study]	## All the rows belonging to this study
+		df = self.mf[self.mf['name'] == study]	## All the rows belonging to this study (chosen index) -> single patient row in manifest
 		sid = df['series_uid'].iloc[0]			## Pick one series
 		slices = df[df['series_uid'] == sid]	## All slices (rows) for the selected series within the study
 		volume = [to_windowed_tensor(
 			pydicom.dcmread(p)) for p in slices['path']]
-		x = torch.stack(volume)					## Stack per-slice tensors into a 4D batch
+		x = torch.stack(volume)					## Stack per-slice tensors into a 4D batch [num_slice, num_chan, h, w]
 		y = self.lbl.loc[study, 'ICH_soft']		## Target scalar label (soft or majority)
 		if self.tf:
 			x = self.tf(x)
 		return x, torch.tensor(y, dtype=torch.float32)
 
+# Helper
+# DICOM to Tensor
 def to_windowed_tensor(
 		ds: pydicom.dataset.FileDataset,
 		windows: list[tuple[int, int]] | None = [(40, 80), (80, 200), (600, 2800)],
@@ -68,12 +70,13 @@ def to_windowed_tensor(
 		hu = cv2.resize(hu, out_size[::-1], interpolation=cv2.INTER_LINEAR)
 
 	## Window / Level > 0-1 float per channel
+	## 3 channels to feed into model
 	chans: list[np.ndarray] = []
 	for level, width in windows:
 		level: int
 		width: int
-		lower: int = level - width // 2
-		upper: int = level + width // 2
+		lower: int = level - (width // 2)
+		upper: int = level + (width // 2)
 		img_clipped: np.ndarray = np.clip(hu, lower, upper)
 		img_norm: np.ndarray = (img_clipped - lower) / float(width)	# 0 - 1
 		chans.append(img_norm.astype(np.float32))
