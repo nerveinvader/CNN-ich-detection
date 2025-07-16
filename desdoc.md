@@ -32,9 +32,9 @@ Qure.ai CQ500 dataset
 * Labels:
 	* Patient ID matching
 * DICOM files:
-	* Slice count per DICOM file
-	* Thickness
-	* Resolution
+	* Slice count:	variable (30+)
+	* Thickness:	variable (Thin - 5mm)
+	* Resolution:	???
 	* Metadata
 * Class balance
 * Image windows
@@ -52,6 +52,10 @@ read.csv:
 * No missing readings or values
 * "name" is the identifier for each patient file
 * Extracted ICH information "compact_reads.csv" file for easier traininig
+
+cq500ct_manifest.parquet:
+* Contains *name, *series_uid, *instance_num, path, thickness (mm), series description
+* Fast loading for future references
 
 Testing one file before moving to preprocessing.
 

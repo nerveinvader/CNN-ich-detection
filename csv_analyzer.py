@@ -55,7 +55,7 @@ compact_reads = pd.read_csv("csv-files/compact_reads.csv")
 # compact_reads.head()
 
 #%%
-# loading data with glob module (file and folders are inconsistent with dataset)
+# >>> loading data with glob module (file and folders are inconsistent with dataset)
 DATA_ROOT = "data/"	# the dataset root (contains qct19 locally)
 # CQ500CT9 CQ500CT9 patient folder pattern
 # CQ500CT** CQ500CT**/Unknown Study/Plain **/.dcm files
@@ -68,7 +68,9 @@ for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
 		continue
 	pid = int(folder.group(1))	# numbers
 	print(f"CQ500CT{pid}")		# not zero padded - main patient folder
-	for dcm_file in glob.glob(f"{DATA_ROOT}/qct*/*/*/*/*.dcm", recursive=True):
+	DIR = fp
+	for dcm_file in glob.glob(f"{DIR}/*/*/*.dcm", recursive=True):
+		print(dcm_file)
 		ds = pydicom.dcmread(dcm_file, stop_before_pixels=True)	# metadata only
 		records.append({
 			"name": pid,
@@ -81,3 +83,8 @@ for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
 manifest = (pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"]))
 manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
 print("Wrote", len(manifest), "rows")
+
+#%%
+# >>> checking parquet file
+pq = pd.read_parquet("cq500ct_qct19_manifest.parquet")
+pq.head()
