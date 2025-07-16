@@ -1,8 +1,9 @@
 #%%
 # >>> imports
-from os import read
-import glob
+import os, re, glob
+from numpy import record
 import pandas as pd
+import pydicom
 
 #%%
 # >>> loading and reading the CSV files
@@ -51,10 +52,32 @@ compact_reads = pd.read_csv("csv-files/compact_reads.csv")
 # reads['ICH-soft']		= reads['ICH-sum'] / 3
 # compact_reads = reads[['name', 'ICH-sum', 'ICH-majority', 'ICH-soft']]
 # compact_reads.to_csv('compact_reads.csv', index=False)
-
-#%%
-#
 # compact_reads.head()
 
 #%%
 # loading data with glob module (file and folders are inconsistent with dataset)
+DATA_ROOT = "data/"	# the dataset root (contains qct19 locally)
+# CQ500CT9 CQ500CT9 patient folder pattern
+# CQ500CT** CQ500CT**/Unknown Study/Plain **/.dcm files
+PID = re.compile(r"CQ500CT(\d{1,3})") # 0-999
+records = []
+
+for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
+	folder = PID.search(fp)		# folder names
+	if not folder:
+		continue
+	pid = int(folder.group(1))	# numbers
+	print(f"CQ500CT{pid}")		# not zero padded - main patient folder
+	for dcm_file in glob.glob(f"{DATA_ROOT}/qct*/*/*/*/*.dcm", recursive=True):
+		ds = pydicom.dcmread(dcm_file, stop_before_pixels=True)	# metadata only
+		records.append({
+			"name": pid,
+			"series_uid": ds.SeriesInstanceUID,
+			"instance_num": ds.get("InstanceNumber", -1),
+			"path": fp,
+			"slice_thick_mm": float(ds.get("SliceThickness", -1)),
+			"series_desc": ds.get("SeriesDescription", ""),
+		})
+manifest = (pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"]))
+manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
+print("Wrote", len(manifest), "rows")
