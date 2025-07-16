@@ -36,7 +36,7 @@ class CQ500Dataset(torch.utils.data.Dataset):
 	def __getitem__(self, idx) -> tuple:
 		study = self.ids[idx]					## Pick a study (not slices)
 		df = self.mf[self.mf['name'] == study]	## All the rows belonging to this study (chosen index) -> single patient row in manifest
-		sid = df['series_uid'].iloc[0]			## Pick one series
+		sid = df['series_uid'].iloc[0]			## Pick one series #! ???
 		slices = df[df['series_uid'] == sid]	## All slices (rows) for the selected series within the study
 		volume = [to_windowed_tensor(
 			pydicom.dcmread(p)) for p in slices['path']]
