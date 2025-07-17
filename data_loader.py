@@ -41,7 +41,7 @@ class CQ500Dataset(torch.utils.data.Dataset):
 		volume = [to_windowed_tensor(
 			pydicom.dcmread(p)) for p in slices['path']]
 		x = torch.stack(volume)					## Stack per-slice tensors into a 4D batch [num_slice, num_chan, h, w]
-		y = self.lbl.loc[study, 'ICH_soft']		## Target scalar label (soft or majority)
+		y = self.lbl.loc[study, 'ICH-majority']		## Target scalar label (soft or majority)
 		if self.tf:
 			x = self.tf(x)
 		return x, torch.tensor(y, dtype=torch.float32)

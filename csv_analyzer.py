@@ -20,7 +20,7 @@ compact_reads.head()
 #for col in reads.columns:
 #	print("Values per column: ", reads[col].value_counts())
 
-#* to extract info from the dataset:
+# to extract info from the dataset:
 # b1_count = 0
 # b2_count = 0
 # for i, r in reads.iterrows():
@@ -98,11 +98,18 @@ pq.head()
 ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
 # print(f"Studies available: {len(ds)}")	# available studies
 
-print(ds[0])
-
 # one study: shape and label
-# x, y = ds[0] # get idx 0
-# print("tensor shape: ", x.shape)
-# print("label - ICH: ", y.item())
+x, y = ds[2] # get idx 0
+print("tensor shape: ", x.shape)
+print("label - ICH: ", y.item())
+# This shows:
+# The index = 2 shows ICH = 1.0, torch.size([30, 3, 256, 256])
+
+# %%
+# >>> visual check the study
+plt.imshow(x[0,0].cpu(), cmap='gray')
+plt.title(f"ICH-soft={y:.2f}")
+plt.axis('off')
+plt.show()
 
 # %%
