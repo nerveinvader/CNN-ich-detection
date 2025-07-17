@@ -66,20 +66,20 @@ DATA_ROOT = "data/"	# the dataset root (contains qct19 locally)
 PID = re.compile(r"CQ500CT(\d{1,3})") # 0-999
 records = []
 
-for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
+for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
 	folder = PID.search(fp)		# folder names
 	if not folder:
 		continue
 	pid = int(folder.group(1))	# numbers
 	print(f"CQ500CT{pid}")		# not zero padded - main patient folder
 	DIR = fp
-	for dcm_file in glob.glob(f"{DIR}/*/*/*.dcm", recursive=True):
+	for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
 		ds: pydicom.dataset.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only
 		records.append({
 			"name": f"CQ500-CT-{pid}",
 			"series_uid": ds.SeriesInstanceUID,
 			"instance_num": ds.get("InstanceNumber", -1),
-			"path": fp,
+			"path": dcm_file,
 			"slice_thick_mm": float(ds.get("SliceThickness", -1)),
 			"series_desc": ds.get("SeriesDescription", ""),
 		})
@@ -95,10 +95,14 @@ pq.head()
 
 #%%
 # >>> checking one patient / one study / one series / one dicom
-print(set(pq['name'].unique()) & set(compact_reads['name'].unique()))
-print(len(set(pq['name'].unique()) & set(compact_reads['name'].unique())))
-
-
 ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
-print(f"Studies available: {len(ds)}")
+# print(f"Studies available: {len(ds)}")	# available studies
+
+print(ds[0])
+
+# one study: shape and label
+# x, y = ds[0] # get idx 0
+# print("tensor shape: ", x.shape)
+# print("label - ICH: ", y.item())
+
 # %%
