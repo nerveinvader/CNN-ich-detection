@@ -4,12 +4,16 @@ import os, re, glob
 from numpy import record
 import pandas as pd
 import pydicom
+import matplotlib.pyplot as plt
+import pydicom.dataset
+from data_loader import CQ500Dataset
 
 #%%
 # >>> loading and reading the CSV files
 reads = pd.read_csv("csv-files/reads.csv")
 compact_reads = pd.read_csv("csv-files/compact_reads.csv")
 # reads.head()
+compact_reads.head()
 
 # Value check of reads.csv file,
 # Brief is below this code
@@ -70,10 +74,9 @@ for fp in glob.glob(f"{DATA_ROOT}/qct*/*", recursive=True):
 	print(f"CQ500CT{pid}")		# not zero padded - main patient folder
 	DIR = fp
 	for dcm_file in glob.glob(f"{DIR}/*/*/*.dcm", recursive=True):
-		print(dcm_file)
-		ds: pydicom.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only
+		ds: pydicom.dataset.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only
 		records.append({
-			"name": pid,
+			"name": f"CQ500-CT-{pid}",
 			"series_uid": ds.SeriesInstanceUID,
 			"instance_num": ds.get("InstanceNumber", -1),
 			"path": fp,
@@ -87,4 +90,15 @@ print("Wrote", len(manifest), "rows")
 #%%
 # >>> checking parquet file
 pq = pd.read_parquet("cq500ct_qct19_manifest.parquet")
+pq['name'] = pq['name'].astype(str)
 pq.head()
+
+#%%
+# >>> checking one patient / one study / one series / one dicom
+print(set(pq['name'].unique()) & set(compact_reads['name'].unique()))
+print(len(set(pq['name'].unique()) & set(compact_reads['name'].unique())))
+
+
+ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
+print(f"Studies available: {len(ds)}")
+# %%
