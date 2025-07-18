@@ -1,14 +1,19 @@
-#%%
+"""
+This is a temp file to analyze, review and test pipelines.
+Author:     nerveinvader
+"""
+
+# %%
 # >>> imports
-import os, re, glob
-from numpy import record
+import re
+import glob
 import pandas as pd
-import pydicom
 import matplotlib.pyplot as plt
+import pydicom
 import pydicom.dataset
 from data_loader import CQ500Dataset
 
-#%%
+# %%
 # >>> loading and reading the CSV files
 reads = pd.read_csv("csv-files/reads.csv")
 compact_reads = pd.read_csv("csv-files/compact_reads.csv")
@@ -17,14 +22,15 @@ compact_reads.head()
 
 # Value check of reads.csv file,
 # Brief is below this code
-#for col in reads.columns:
-#	print("Values per column: ", reads[col].value_counts())
+# for col in reads.columns:
+# 	print("Values per column: ", reads[col].value_counts())
 
 # to extract info from the dataset:
 # b1_count = 0
 # b2_count = 0
 # for i, r in reads.iterrows():
-# 	# print(f"Patient {r['name']}/{r['Category']} = R1: {r['R1:ICH']}/R2: {r['R2:ICH']}/R3: {r['R3:ICH']}")
+# 	# print(f"Patient {r['name']}/{r['Category']} = R1: {r['R1:ICH']}\
+#                               /R2: {r['R2:ICH']}/R3: {r['R3:ICH']}")
 # 	if r['R1:ICH'] == 1 or r['R2:ICH'] == 1 or r['R3:ICH'] == 1:
 # 		if r['Category'] == 'B1':
 # 			b1_count += 1
@@ -32,7 +38,7 @@ compact_reads.head()
 # 			b2_count += 1
 # print(f"B1 ICH: {b1_count}\nB2 ICH: {b2_count}")
 
-#* the data shows:
+# * the data shows:
 # > dtypes are int64
 # > R1-2-3: ICH, IPH, IVH, SDH, EDH, SAH
 # > ~: BleedLocation-Left / -Right
@@ -58,48 +64,52 @@ compact_reads.head()
 # compact_reads.to_csv('compact_reads.csv', index=False)
 # compact_reads.head()
 
-#%%
+# %%
 # >>> loading data with glob module (file and folders are inconsistent with dataset)
-DATA_ROOT = "data/"	# the dataset root (contains qct19 locally)
+DATA_ROOT = "data/"  # the dataset root (contains qct19 locally)
 # CQ500CT9 CQ500CT9 patient folder pattern
 # CQ500CT** CQ500CT**/Unknown Study/Plain **/.dcm files
-PID = re.compile(r"CQ500CT(\d{1,3})") # 0-999
+PID = re.compile(r"CQ500CT(\d{1,3})")  # 0-999
 records = []
 
 for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
-	folder = PID.search(fp)		# folder names
-	if not folder:
-		continue
-	pid = int(folder.group(1))	# numbers
-	print(f"CQ500CT{pid}")		# not zero padded - main patient folder
-	DIR = fp
-	for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
-		ds: pydicom.dataset.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only
-		records.append({
-			"name": f"CQ500-CT-{pid}",
-			"series_uid": ds.SeriesInstanceUID,
-			"instance_num": ds.get("InstanceNumber", -1),
-			"path": dcm_file,
-			"slice_thick_mm": float(ds.get("SliceThickness", -1)),
-			"series_desc": ds.get("SeriesDescription", ""),
-		})
-manifest = (pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"]))
+    folder = PID.search(fp)  # folder names
+    if not folder:
+        continue
+    pid = int(folder.group(1))  # numbers
+    print(f"CQ500CT{pid}")  # not zero padded - main patient folder
+    DIR = fp
+    for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
+        ds: pydicom.dataset.FileDataset = pydicom.dcmread(
+            dcm_file, stop_before_pixels=True
+        )  ## Metadata only
+        records.append(
+            {
+                "name": f"CQ500-CT-{pid}",
+                "series_uid": ds.SeriesInstanceUID,
+                "instance_num": ds.get("InstanceNumber", -1),
+                "path": dcm_file,
+                "slice_thick_mm": float(ds.get("SliceThickness", -1)),
+                "series_desc": ds.get("SeriesDescription", ""),
+            }
+        )
+manifest = pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"])
 manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
 print("Wrote", len(manifest), "rows")
 
-#%%
+# %%
 # >>> checking parquet file
 pq = pd.read_parquet("cq500ct_qct19_manifest.parquet")
-pq['name'] = pq['name'].astype(str)
+pq["name"] = pq["name"].astype(str)
 pq.head()
 
-#%%
+# %%
 # >>> checking one patient / one study / one series / one dicom
 ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
 # print(f"Studies available: {len(ds)}")	# available studies
 
 # one study: shape and label
-x, y = ds[2] # get idx 0
+x, y = ds[2]  # get idx 0
 print("tensor shape: ", x.shape)
 print("label - ICH: ", y.item())
 # This shows:
@@ -107,9 +117,9 @@ print("label - ICH: ", y.item())
 
 # %%
 # >>> visual check the study
-plt.imshow(x[0,0].cpu(), cmap='gray')
+plt.imshow(x[0, 0].cpu(), cmap="gray")
 plt.title(f"ICH-soft={y:.2f}")
-plt.axis('off')
+plt.axis("off")
 plt.show()
 
 # %%
