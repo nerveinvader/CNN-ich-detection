@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pydicom
 import pydicom.dataset
 from data_loader import CQ500Dataset
+from sklearn.model_selection import GroupShuffleSplit
 
 # %%
 # >>> loading and reading the CSV files
@@ -69,33 +70,33 @@ compact_reads.head()
 DATA_ROOT = "data/"  # the dataset root (contains qct19 locally)
 # CQ500CT9 CQ500CT9 patient folder pattern
 # CQ500CT** CQ500CT**/Unknown Study/Plain **/.dcm files
-PID = re.compile(r"CQ500CT(\d{1,3})")  # 0-999
-records = []
+# PID = re.compile(r"CQ500CT(\d{1,3})")  # 0-999
+# records = []
 
-for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
-    folder = PID.search(fp)  # folder names
-    if not folder:
-        continue
-    pid = int(folder.group(1))  # numbers
-    print(f"CQ500CT{pid}")  # not zero padded - main patient folder
-    DIR = fp
-    for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
-        ds: pydicom.dataset.FileDataset = pydicom.dcmread(
-            dcm_file, stop_before_pixels=True
-        )  ## Metadata only
-        records.append(
-            {
-                "name": f"CQ500-CT-{pid}",
-                "series_uid": ds.SeriesInstanceUID,
-                "instance_num": ds.get("InstanceNumber", -1),
-                "path": dcm_file,
-                "slice_thick_mm": float(ds.get("SliceThickness", -1)),
-                "series_desc": ds.get("SeriesDescription", ""),
-            }
-        )
-manifest = pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"])
-manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
-print("Wrote", len(manifest), "rows")
+# for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
+#     folder = PID.search(fp)  # folder names
+#     if not folder:
+#         continue
+#     pid = int(folder.group(1))  # numbers
+#     print(f"CQ500CT{pid}")  # not zero padded - main patient folder
+#     DIR = fp
+#     for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
+#         ds: pydicom.dataset.FileDataset = pydicom.dcmread(
+#             dcm_file, stop_before_pixels=True
+#         )  ## Metadata only
+#         records.append(
+#             {
+#                 "name": f"CQ500-CT-{pid}",
+#                 "series_uid": ds.SeriesInstanceUID,
+#                 "instance_num": ds.get("InstanceNumber", -1),
+#                 "path": dcm_file,
+#                 "slice_thick_mm": float(ds.get("SliceThickness", -1)),
+#                 "series_desc": ds.get("SeriesDescription", ""),
+#             }
+#         )
+# manifest = pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"])
+# manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
+# print("Wrote", len(manifest), "rows")
 
 # %%
 # >>> checking parquet file
@@ -109,18 +110,31 @@ ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
 # print(f"Studies available: {len(ds)}")	# available studies
 
 # one study: shape and label
-x, y = ds[2]  # get idx
-print("tensor shape: ", x.shape)
-print("label - ICH: ", y.item())
+# x, y = ds[2]  # get idx
+# print("tensor shape: ", x.shape)
+# print("label - ICH: ", y.item())
 # This shows:
 # The index = 2 shows ICH = 1.0, torch.size([30, 3, 256, 256])
 
 # %%
 # >>> visual check the study
-#* plt.imshow accepts x: 2DArray -> [slice, channel]
-plt.imshow(x[0, 0].cpu(), cmap="gray")
-plt.title(f"ICH-soft={y:.2f}")
-plt.axis("off")
-plt.show()
+# plt.imshow accepts x: 2DArray -> [slice, channel]
+# plt.imshow(x[12, 0].cpu(), cmap="gray")
+# plt.title(f"ICH-soft={y:.2f}")
+# plt.axis("off")
+# plt.show()
 
 # %%
+# >>> merge the two compact_reads and manifest files for splittiong
+# pq and compact_reads
+metadata_df = pq.merge(
+    compact_reads[['name', 'ICH-majority']],
+    on='name',
+    how='left',
+    validate='many_to_one',
+    indicator=True
+)
+metadata_df.head()
+# Assertion to check if there are any phantom rows (row without values - missings)
+# assert not metadata_df['_merge'].eq('left_only').any(), "Some slices missing labels"
+# metadata_df.drop(columns='ICH-majority', inplace=True)
