@@ -109,7 +109,7 @@ ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
 # print(f"Studies available: {len(ds)}")	# available studies
 
 # one study: shape and label
-x, y = ds[2]  # get idx 0
+x, y = ds[2]  # get idx
 print("tensor shape: ", x.shape)
 print("label - ICH: ", y.item())
 # This shows:
@@ -117,6 +117,7 @@ print("label - ICH: ", y.item())
 
 # %%
 # >>> visual check the study
+#* plt.imshow accepts x: 2DArray -> [slice, channel]
 plt.imshow(x[0, 0].cpu(), cmap="gray")
 plt.title(f"ICH-soft={y:.2f}")
 plt.axis("off")

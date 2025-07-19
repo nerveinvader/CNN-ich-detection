@@ -58,7 +58,7 @@ cq500ct_manifest.parquet:
 * Fast loading for future references
 
 Testing one file before moving to preprocessing:
-* data_loader.py
+* data_loader.py (loads data from the dataset folder via parquet + csv)
 
 Kaggle GPU free plan
 
