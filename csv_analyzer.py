@@ -18,11 +18,11 @@ from sklearn.model_selection import GroupShuffleSplit
 # >>> loading and reading the CSV files
 reads = pd.read_csv("csv-files/reads.csv")
 
-cat_reads = reads[['name', 'Category']]
-cat_reads.to_csv('cat_reads.csv', index=False)
-cat_reads.head()
+#cat_reads = reads[['name', 'Category']]
+#cat_reads.to_csv('cat_reads.csv', index=False)
+#cat_reads.head()
 
-#compact_reads = pd.read_csv("csv-files/compact_reads.csv")
+compact_reads = pd.read_csv("csv-files/compact_reads.csv")
 # reads.head()
 #compact_reads.head()
 
