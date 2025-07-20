@@ -1,7 +1,6 @@
 # Design Document:
 
 ## TO-DO List:
-() analyze one dicom file to get the hang of the whole ds.
 
 ## Big picture:
 Problem:
@@ -22,6 +21,9 @@ Frame:
 * Train on 2D slices (resource-friendly)
 * Patient-level for final diagnosis
 * Imbalanced class (~ 5% positive cases)
+
+Setup:
+* Kaggle GPU sessions (free)
 
 Output:
 * Probability of ICH (per slice, per patient)
@@ -60,10 +62,8 @@ cq500ct_manifest.parquet:
 ctq500_metadata.parquet:
 * Contians both manifest and compact_reads data
 
-Testing one file before moving to preprocessing:
+Pipelines
 * data_loader.py (loads data from the dataset folder via parquet + csv)
-
-Kaggle GPU free plan
 
 ## Preparation & Preprocessing:
 
