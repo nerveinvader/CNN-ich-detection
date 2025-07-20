@@ -57,6 +57,9 @@ cq500ct_manifest.parquet:
 * Contains *name, *series_uid, *instance_num, path, thickness (mm), series description
 * Fast loading for future references
 
+ctq500_metadata.parquet:
+* Contians both manifest and compact_reads data
+
 Testing one file before moving to preprocessing:
 * data_loader.py (loads data from the dataset folder via parquet + csv)
 
