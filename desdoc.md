@@ -1,6 +1,8 @@
 # Design Document:
 
 ## TO-DO List:
+() Split B1 into T + V. B2 for Test
+() Cross validate inside B1 if necessary
 
 ## Big picture:
 Problem:
