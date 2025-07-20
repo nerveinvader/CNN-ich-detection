@@ -1,0 +1,1 @@
+pip install --no-cache-dir python-gdcm pylibjpeg pylibjpeg-libjpeg pylibjpeg-openjpeg && pip install --no-cache-dir --force-reinstall scikit-learn
