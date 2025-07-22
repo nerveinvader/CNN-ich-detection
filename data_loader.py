@@ -13,6 +13,7 @@ import torch
 import pydicom
 import pydicom.dataset
 from pydicom.pixel_data_handlers.util import _apply_modality_lut
+from dcm_to_tensor import DCMLoader
 
 
 # Class
@@ -49,7 +50,8 @@ class CQ500Dataset(torch.utils.data.Dataset):
         slices = df[
             df["series_uid"] == sid
         ]  ## All slices (rows) for the selected series within the study
-        volume = [dcm_to_tensor(pydicom.dcmread(p)) for p in slices["path"]]
+        dcm_loader = DCMLoader()
+        volume = [dcm_loader.dcm_to_tensor(p) for p in slices["path"]]
         x = torch.stack(
             volume
         )  ## Stack per-slice tensors into a 4D batch [num_slice, num_chan, h, w]
