@@ -19,7 +19,7 @@ from pydicom.pixel_data_handlers.util import _apply_modality_lut
 class CQ500Dataset(torch.utils.data.Dataset):
     """
     Connects `cq500ct_manifest.parquet` and `label.csv` and turns into Pytorch `tensors`.
-    Returns x (shape), y (torch tensor float32) could be used as tran_ds.
+    Returns x (shape[slice, C, H, W]), y (torch tensor float32) could be used as tran_ds.
     """
 
     def __init__(
