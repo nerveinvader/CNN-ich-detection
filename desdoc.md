@@ -66,7 +66,7 @@ ctq500_metadata.parquet:
 
 Pipelines
 * data_loader.py (loads data from the dataset folder via parquet + csv)
-*
+* data_loader_25d.py (loads slices i, i-1, and i+1 from metadata.parquet file)
 
 ## Preparation & Preprocessing:
 

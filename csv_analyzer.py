@@ -5,14 +5,14 @@ Author:     nerveinvader
 
 # %%
 # >>> imports
-import re
-import glob
+#import re
+#import glob
 import pandas as pd
-import matplotlib.pyplot as plt
-import pydicom
-import pydicom.dataset
+#import matplotlib.pyplot as plt
+#import pydicom
+#import pydicom.dataset
 from data_loader import CQ500Dataset
-from sklearn.model_selection import GroupShuffleSplit
+#from sklearn.model_selection import GroupShuffleSplit
 
 # %%
 # >>> loading and reading the CSV files
