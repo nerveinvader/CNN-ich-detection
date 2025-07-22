@@ -146,4 +146,3 @@ metadata_df = pq.merge(
 metadata_df.head()
 # Assertion to check if there are any phantom rows (row without values - missings)
 # assert not metadata_df['_merge'].eq('left_only').any(), "Some slices missing labels"
-# metadata_df.drop(columns='ICH-majority', inplace=True)
