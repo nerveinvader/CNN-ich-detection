@@ -119,7 +119,7 @@ class CQ500DataLoader25D(Dataset):
         ## Merge HU channel and slice context dims (slice_ctx, hu_ch, H, W).\
         ## The convention is to keep the slice context and drop the HU channel.\
         ## Because we windowed into HU spaces, each slice context acts as one channel.\
-        x = x_stack.mean(dim = 1)   # (3, H, W)
+        x = x_stack.mean(dim = 1)   # (3, H, W) - dim=1 for HU channel
 
         if self.transform:
             x = self.transform(x)
