@@ -49,7 +49,7 @@ class CQ500Dataset(torch.utils.data.Dataset):
         slices = df[
             df["series_uid"] == sid
         ]  ## All slices (rows) for the selected series within the study
-        volume = [to_windowed_tensor(pydicom.dcmread(p)) for p in slices["path"]]
+        volume = [dcm_to_tensor(pydicom.dcmread(p)) for p in slices["path"]]
         x = torch.stack(
             volume
         )  ## Stack per-slice tensors into a 4D batch [num_slice, num_chan, h, w]
@@ -63,7 +63,7 @@ class CQ500Dataset(torch.utils.data.Dataset):
 
 # Helper
 # DICOM to Tensor
-def to_windowed_tensor(
+def dcm_to_tensor(
     ds: pydicom.dataset.FileDataset,
     windows: list[tuple[int, int]] = None,
     out_size: tuple[int, int] = None,
