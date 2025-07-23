@@ -4,7 +4,8 @@ Description:	Write a parquet file to manifest the whole dataset. Faster loading 
 Created:		16th/JULY/2025
 Author:			nerveinvader
 """
-import os, re, glob
+import re
+import glob
 import pandas as pd
 import pydicom
 import pydicom.dataset
@@ -20,23 +21,25 @@ records = []		## Array that appends .dcm file's metadata and info
 ### Find patient's folder (pattern: CQ500CT### CQ500CT###)
 ### and pass it as PID_DIR (patient ID directory).
 for fp in glob.glob(f"{DATA_PATH}/qct*/*", recursive=True):
-	folder = PID.search(fp)		## Folder names matching with PID (compiled above)
-	if not folder:
-		continue
-	pid = int(folder.group(1))	## Patient number as int
-	print(f"CQ500CT{pid}")		# Print patient name
-	PID_DIR = fp				## Directory to path for the next step >
-	for dcm_file in glob.glob(f"{PID_DIR}/*/*/*.dcm", recursive=True):
-		ds: pydicom.dataset.FileDataset = pydicom.dcmread(dcm_file, stop_before_pixels=True)	## Metadata only - no pixel data
-		# Write into records >
-		records.append({
-			"name": pid,
-			"series_uid": ds.SeriesInstanceUID,
-			"instance_num": ds.get("InstanceNumber", -1),
-			"path": fp,
-			"slice_thick_mm": float(ds.get("SliceThickness", -1)),
-			"series_desc": ds.get("SeriesDescription", ""),
-		})
+    folder = PID.search(fp)		## Folder names matching with PID (compiled above)
+    if not folder:
+        continue
+    pid = int(folder.group(1))	## Patient number as int
+    print(f"CQ500CT{pid}")		# Print patient name
+    PID_DIR = fp				## Directory to path for the next step >
+    for dcm_file in glob.glob(f"{PID_DIR}/*/*/*.dcm", recursive=True):
+        ds: pydicom.dataset.FileDataset = pydicom.dcmread(
+            dcm_file, stop_before_pixels=True
+        )	## Metadata only - no pixel data
+        # Write into records >
+        records.append({
+            "name": pid,
+            "series_uid": ds.SeriesInstanceUID,
+            "instance_num": ds.get("InstanceNumber", -1),
+            "path": fp,
+            "slice_thick_mm": float(ds.get("SliceThickness", -1)),
+            "series_desc": ds.get("SeriesDescription", ""),
+        })
 
 ### Write records info (dict) into a parquet file.
 ### Name of the file: cq500ct_manifest.parquet
