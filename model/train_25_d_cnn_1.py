@@ -2,6 +2,7 @@
 Model pipeline
 """
 # 2p5d_cnn_train.py
+import pandas as pd
 import torch.nn as nn
 import torch, torchvision as tv
 from torch.utils.data import DataLoader
@@ -40,7 +41,7 @@ _BACKBONES = {
 class TwoPointFiveD(nn.Module):
     """ Backbone + Linear head for binary ICH classification """
     def __init__(self, backbone_name: str = "resnet18",
-                 in_channels: int = 9):            # 3 HU ch × 3 slices
+                 in_channels: int = 3):            # 3 slices (HU channel is reduced)
         super().__init__()
         backbone = _BACKBONES[backbone_name](in_channels)
         _replace_first_conv(backbone, in_channels)
@@ -180,10 +181,11 @@ if __name__ == "__main__":
 
     from data_loader_25d import CQ500DataLoader25D   # ← adjust import
 
-    train_set = CQ500DataLoader25D("full_metadata.parquet",
-                                   indices="train_idx.parquet")
-    val_set   = CQ500DataLoader25D("full_metadata.parquet",
-                                   indices="val_idx.parquet")
+    train_names = pd.read_parquet("train_idx.parquet")["name"].tolist()
+    val_names = pd.read_parquet("val_idx.parquet")["name"].tolist()
+
+    train_set = CQ500DataLoader25D("full_metadata.parquet", indices=train_names)
+    val_set   = CQ500DataLoader25D("full_metadata.parquet", indices=val_names)
 
     current_train_loader = DataLoader(train_set, batch_size=32,
                               shuffle=True, num_workers=4, pin_memory=True)
