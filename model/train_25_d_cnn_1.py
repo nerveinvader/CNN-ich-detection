@@ -1,239 +1,194 @@
-from __future__ import annotations
-
 """
-train_25d_cnn.py — v2
-====================
-* Added **pos_weight** support for class‑imbalance in `BCEWithLogitsLoss`.
-* Added **PR‑AUC (Average Precision)**, **Sensitivity (Recall)** and **Specificity** metrics alongside AUROC & Accuracy.
-* Metrics handled through a single helper that prints an easy‑to‑read summary after every epoch.
-* Minor refactor of the `Trainer` class for clarity.
-
-Run with e.g.:
-```
-python train_25d_cnn.py \
-  --data_dir /kaggle/input/cq500 --meta metadata.parquet \
-  --in_channels 9 --pos_weight 5.2 --epochs 15
-```
+Model pipeline
 """
-
-import argparse
-import json
-import math
-import os
-from pathlib import Path
-from typing import Dict, List, Sequence, Tuple, Optional
-
-import torch
+# 2p5d_cnn_train.py
 import torch.nn as nn
-import torch.optim as optim
-from torch.cuda.amp import GradScaler, autocast
+import torch, torchvision as tv
 from torch.utils.data import DataLoader
-from torchvision import models, transforms
-
-import torchmetrics as tm
+from torch.cuda.amp import autocast, GradScaler
 from torchmetrics.classification import (
-    BinaryAUROC,
-    BinaryAveragePrecision,  # PR‑AUC
-    BinaryAccuracy,
-    BinaryRecall,            # Sensitivity
-    BinarySpecificity,       # Specificity
+    BinaryAUROC, BinaryAveragePrecision,
+    BinaryRecall, BinarySpecificity
 )
+from tqdm import tqdm
 
-from cq500_25d_dataloader import CQ500SliceTripletDataset
 
-# -----------------------------------------------------
-# Model: first‑conv patcher so ResNet (or any 2‑D CNN) 
-# can take arbitrary channel counts (3 or 9)
-# -----------------------------------------------------
+# ---------- 1. Model ----------------------------------------------------------
+def _replace_first_conv(m: nn.Module, in_ch: int) -> None:
+    """Replace the first conv to accept `in_ch` channels; keeps pretrained weights."""
+    old = m.conv1
+    new = nn.Conv2d(in_ch, old.out_channels,
+                    kernel_size=old.kernel_size,
+                    stride=old.stride,
+                    padding=old.padding,
+                    bias=old.bias is not None)
+    # repeat / average weights to new conv (simple heuristic)
+    with torch.no_grad():
+        repeat = in_ch // old.in_channels
+        new.weight.copy_(old.weight.repeat(1, repeat, 1, 1) / repeat)
+    m.conv1 = new
 
-def build_backbone(name: str = "resnet18", in_channels: int = 9, pretrained: bool = True) -> nn.Module:
-    model = getattr(models, name)(weights="IMAGENET1K_V1" if pretrained else None)
-    if in_channels != 3:
-        # Replace first conv
-        old_conv = model.conv1
-        new_conv = nn.Conv2d(
-            in_channels,
-            old_conv.out_channels,
-            kernel_size=old_conv.kernel_size,
-            stride=old_conv.stride,
-            padding=old_conv.padding,
-            bias=old_conv.bias is not None,
-        )
-        # Kaiming init & copy if feasible
-        nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
-        if in_channels % 3 == 0:
-            with torch.no_grad():
-                repeat = in_channels // 3
-                new_conv.weight[:] = old_conv.weight.repeat(1, repeat, 1, 1) / repeat
-        model.conv1 = new_conv
-    # Replace classifier head
-    in_features = model.fc.in_features
-    model.fc = nn.Linear(in_features, 1)
-    return model
 
-# -----------------------------------------------------
-# Trainer
-# -----------------------------------------------------
+_BACKBONES = {
+    "resnet18": lambda ic: tv.models.resnet18(weights="IMAGENET1K_V1"),
+    "resnet34": lambda ic: tv.models.resnet34(weights="IMAGENET1K_V1"),
+    "densenet121": lambda ic: tv.models.densenet121(weights="IMAGENET1K_V1"),
+    # add more here...
+}
 
-class Trainer:
-    def __init__(
-        self,
-        model: nn.Module,
-        train_loader: DataLoader,
-        val_loader: DataLoader,
-        device: torch.device,
-        lr: float = 1e-4,
-        weight_decay: float = 1e-2,
-        patience: int = 3,
-        pos_weight: Optional[float] = None,
-        out_dir: Path = Path("runs/exp")
-    ):
-        self.model = model.to(device)
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.device = device
-        self.scaler = GradScaler()
-        self.optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-        self.patience = patience
-        self.best_auc = -math.inf
-        self.epochs_without_improve = 0
-        self.out_dir = out_dir
-        self.out_dir.mkdir(parents=True, exist_ok=True)
 
-        pos_w_tensor = None if pos_weight is None else torch.tensor([pos_weight], device=device)
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_w_tensor)
+class TwoPointFiveD(nn.Module):
+    """ Backbone + Linear head for binary ICH classification """
+    def __init__(self, backbone_name: str = "resnet18",
+                 in_channels: int = 9):            # 3 HU ch × 3 slices
+        super().__init__()
+        backbone = _BACKBONES[backbone_name](in_channels)
+        _replace_first_conv(backbone, in_channels)
 
-        # Metrics collection
-        self.train_metrics = tm.MetricCollection({
-            "AUROC": BinaryAUROC(thresholds=None),
-            "PR-AUC": BinaryAveragePrecision(),
-            "Accuracy": BinaryAccuracy(),
-            "Sensitivity": BinaryRecall(),
-            "Specificity": BinarySpecificity()
-        }).to(device)
-        self.val_metrics = self.train_metrics.clone(prefix="val_")
+        if hasattr(backbone, "fc"):               # ResNet-style
+            feat_dim = backbone.fc.in_features
+            backbone.fc = nn.Identity()
+        elif hasattr(backbone, "classifier"):     # DenseNet-style
+            feat_dim = backbone.classifier.in_features
+            backbone.classifier = nn.Identity()
+        else:
+            raise ValueError("Add support for this backbone")
 
-    # ----------------------
-    # One epoch helpers
-    # ----------------------
-    def _forward(self, batch):
-        x, y = batch
-        x = x.to(self.device, non_blocking=True)
-        y = y.to(self.device, non_blocking=True).float().unsqueeze(1)
+        self.backbone = backbone
+        self.classifier = nn.Linear(feat_dim, 1)  # logits
+
+    def forward(self, x):
+        """ Set the model and return Classifier """
+        x = self.backbone(x)
+        return self.classifier(x).squeeze(1)      # (N,) logits
+
+
+# ---------- 2. Metrics helpers -----------------------------------------------
+def make_metric_dict(device):
+    """ Make metrics dictionary """
+    return {
+        "auroc": BinaryAUROC().to(device),
+        "prauc": BinaryAveragePrecision().to(device),
+        "sens":  BinaryRecall(threshold=0.5).to(device),        # sensitivity
+        "spec":  BinarySpecificity(threshold=0.5).to(device)    # specificity
+    }
+
+
+def update_metrics(metrics, preds, targets):
+    """ Update the metrics """
+    for m in metrics.values():
+        m.update(preds, targets.int())
+
+
+def compute_and_reset(metrics):
+    """ Compute Metrics """
+    out = {k: float(v.compute()) for k, v in metrics.items()}
+    for v in metrics.values():
+        v.reset()
+    return out
+
+
+# ---------- 3. Train / Val loops ---------------------------------------------
+@torch.no_grad()
+def validate(model, loader, loss_fn, device, metrics):
+    """ Validate """
+    model.eval()
+    loop = tqdm(loader, desc="val", leave=False)
+    total_loss = 0.0
+    for x, y in loop:
+        x, y = x.to(device, non_blocking=True), y.float().to(device, non_blocking=True)
+        logits = model(x)
+        loss = loss_fn(logits, y)
+        total_loss += loss.item() * y.size(0)
+
+        probs = torch.sigmoid(logits)
+        update_metrics(metrics, probs, y)
+    stats = compute_and_reset(metrics)
+    stats["loss"] = total_loss / len(loader.dataset)
+    return stats
+
+
+def train_one_epoch(model, loader, optimizer, scaler, loss_fn,
+                    device, metrics, epoch):
+    """ Train one Epoch """
+    model.train()
+    loop = tqdm(loader, desc=f"train {epoch}")
+    for x, y in loop:
+        x, y = x.to(device, non_blocking=True), y.float().to(device, non_blocking=True)
+
+        optimizer.zero_grad(set_to_none=True)
         with autocast():
-            logits = self.model(x)
-            loss = self.criterion(logits, y)
-        return loss, logits, y
+            logits = model(x)
+            loss = loss_fn(logits, y)
 
-    def _step_epoch(self, loader: DataLoader, train: bool):
-        metrics = self.train_metrics if train else self.val_metrics
-        metrics.reset()
-        pbar = loader if not train else loader
-        mode_str = "Train" if train else "Val  "
-        self.model.train(train)
-        total_loss = 0.0
-        for x, y in pbar:
-            if train:
-                self.optimizer.zero_grad(set_to_none=True)
-            loss, logits, targets = self._forward((x, y))
-            if train:
-                self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            metrics.update(logits.sigmoid(), targets)
-            total_loss += loss.item() * x.size(0)
-        epoch_loss = total_loss / len(loader.dataset)
-        epoch_metrics = metrics.compute()
-        epoch_metrics[f"{mode_str}_loss"] = epoch_loss
-        return epoch_metrics
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
-    # ----------------------
-    # Training loop
-    # ----------------------
-    def fit(self, epochs: int = 10):
-        for epoch in range(1, epochs + 1):
-            train_stats = self._step_epoch(self.train_loader, train=True)
-            val_stats = self._step_epoch(self.val_loader, train=False)
-            self._log_epoch(epoch, train_stats | val_stats)
+        probs = torch.sigmoid(logits.detach())
+        update_metrics(metrics, probs, y)
 
-            current_auc = val_stats["val_AUROC"].item()
-            if current_auc > self.best_auc:
-                self.best_auc = current_auc
-                self.epochs_without_improve = 0
-                torch.save(self.model.state_dict(), self.out_dir / "best.pt")
-            else:
-                self.epochs_without_improve += 1
+        loop.set_postfix(loss=loss.item())
+    return compute_and_reset(metrics)
 
-            if self.epochs_without_improve >= self.patience:
-                print(f"Early stopping at epoch {epoch} (no AUROC improvement for {self.patience} epochs)")
+
+# ---------- 4. Fit routine with early-stopping -------------------------------
+def fit(model, train_loader, val_loader,
+        epochs=20, patience=3, lr=3e-4, weight_decay=1e-4,
+        save_path="best_auc.pt"):
+    """ Fit the model """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    loss_fn = nn.BCEWithLogitsLoss()
+
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scaler = GradScaler()
+
+    best_auc, epochs_no_improve = 0.0, 0
+    for ep in range(1, epochs + 1):
+        train_metrics = train_one_epoch(model, train_loader, opt, scaler,
+                                        loss_fn, device,
+                                        make_metric_dict(device), ep)
+        val_metrics = validate(model, val_loader, loss_fn, device,
+                               make_metric_dict(device))
+
+        print(f"\nEpoch {ep}: "
+              f"AUROC {val_metrics['auroc']:.4f}  "
+              f"PRAUC {val_metrics['prauc']:.4f}  "
+              f"Sens {val_metrics['sens']:.4f}  "
+              f"Spec {val_metrics['spec']:.4f}")
+
+        cur_auc = val_metrics["auroc"]
+        if cur_auc > best_auc:
+            best_auc = cur_auc
+            torch.save(model.state_dict(), save_path)
+            epochs_no_improve = 0
+            print("  ↑ saved new best weights")
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f"Early-stopping (no AUROC improvement for {patience} epochs)")
                 break
 
-    # ----------------------
-    # Pretty print helper
-    # ----------------------
-    @staticmethod
-    def _log_epoch(epoch: int, stats: Dict[str, torch.Tensor]):
-        stats_fmt = {k: f"{v:.4f}" for k, v in stats.items()}
-        print(json.dumps({"epoch": epoch, **stats_fmt}, indent=None))
 
-# -----------------------------------------------------
-# CLI / main
-# -----------------------------------------------------
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", type=str, required=True)
-    parser.add_argument("--meta", type=str, required=True)
-    parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--in_channels", type=int, default=9, help="3 or 9 depending on dataset loader")
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=1e-2)
-    parser.add_argument("--patience", type=int, default=3)
-    parser.add_argument("--pos_weight", type=float, default=None, help="Ratio of neg/pos samples. If None no weighting is used.")
-    parser.add_argument("--backbone", type=str, default="resnet18", help="Any torchvision model")
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-
-    train_ds = CQ500SliceTripletDataset(
-        root=args.data_dir,
-        metadata_path=args.meta,
-        split="train",
-        in_channels=args.in_channels,
-        cache=False,
-    )
-    val_ds = CQ500SliceTripletDataset(
-        root=args.data_dir,
-        metadata_path=args.meta,
-        split="val",
-        in_channels=args.in_channels,
-        cache=False,
-    )
-
-    train_loader = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=4, pin_memory=True)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = build_backbone(args.backbone, in_channels=args.in_channels)
-
-    trainer = Trainer(
-        model,
-        train_loader,
-        val_loader,
-        device,
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-        patience=args.patience,
-        pos_weight=args.pos_weight,
-        out_dir=Path("runs/exp-001"),
-    )
-
-    trainer.fit(epochs=args.epochs)
-
-
+# ---------- 5. Example usage --------------------------------------------------
 if __name__ == "__main__":
-    main()
+    # Assume you already have:
+    #   train_idx.parquet  val_idx.parquet  full_metadata.parquet
+    # And a DataLoader class `CQ500DataLoader25D` returning
+    #   x: (9, H, W) float32  |  y: binary label 0/1  (ICH-majority)
+
+    from data_loader_25d import CQ500DataLoader25D   # ← adjust import
+
+    train_set = CQ500DataLoader25D("full_metadata.parquet",
+                                   indices="train_idx.parquet")
+    val_set   = CQ500DataLoader25D("full_metadata.parquet",
+                                   indices="val_idx.parquet")
+
+    current_train_loader = DataLoader(train_set, batch_size=32,
+                              shuffle=True, num_workers=4, pin_memory=True)
+    current_val_loader   = DataLoader(val_set, batch_size=32,
+                              shuffle=False, num_workers=4, pin_memory=True)
+
+    current_model = TwoPointFiveD(backbone_name="resnet18", in_channels=9)
+    fit(current_model, current_train_loader, current_val_loader, epochs=30, patience=3)
