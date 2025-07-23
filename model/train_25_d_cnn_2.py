@@ -1,34 +1,24 @@
-from __future__ import annotations
-
 """
-train_25d_cnn.py — v3
+train_25d_cnn.py — v4
 ====================
-Major tweak: **`--arch` is now an accepted alias for `--backbone`.**
-
-Why?
------
-My chat reply mentioned `--arch`, while the previous script exposed `--backbone`.
-Both are now interchangeable so your CLI examples continue to work.
-
 Usage example
 -------------
-```bash
+> bash
 python train_25d_cnn.py \
-    --data_dir /kaggle/input/cq500 --meta metadata.parquet \
-    --arch efficientnet_b2 \  # or --backbone efficientnet_b2
-    --in_channels 9 --pos_weight 5.2 --epochs 15
-```
-
-No other logic changed.
+    --meta /kaggle/input/metadata/cq500ct_metadata.parquet \
+    --arch efficientnet_b2
+    --pos_weight 5.2 --epochs 15 --batch 16
 """
+from __future__ import annotations
 
+#import os
 import argparse
 import json
 import math
-import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional, List, Sequence
 
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -45,13 +35,18 @@ from torchmetrics.classification import (
     BinarySpecificity,       # Specificity
 )
 
-from cq500_25d_dataloader import CQ500SliceTripletDataset
+from data_loader_25d import CQ500DataLoader25D
 
 # -----------------------------------------------------
 # Model builder – patches first conv to accept 3/9 channels
 # -----------------------------------------------------
 
-def build_backbone(name: str = "resnet18", in_channels: int = 9, pretrained: bool = True) -> nn.Module:
+def build_backbone(
+        name: str = "resnet18",
+        in_channels: int = 9,
+        pretrained: bool = True
+) -> nn.Module:
+    """ Build a Model Backbone """
     model = getattr(models, name)(weights="IMAGENET1K_V1" if pretrained else None)
     if in_channels != 3:
         old_conv = model.conv1
@@ -80,6 +75,7 @@ def build_backbone(name: str = "resnet18", in_channels: int = 9, pretrained: boo
 # -----------------------------------------------------
 
 class Trainer:
+    """ Model Trainer """
     def __init__(
         self,
         model: nn.Module,
@@ -143,6 +139,7 @@ class Trainer:
         return stats
 
     def fit(self, epochs: int = 10):
+        """ Fit the Model """
         for ep in range(1, epochs + 1):
             tr = self._run_loader(self.train_loader, train=True)
             vl = self._run_loader(self.val_loader, train=False)
@@ -159,39 +156,85 @@ class Trainer:
                 break
 
     @staticmethod
-    def _print_epoch(ep, stats):
+    def _print_epoch(ep: int, stats):
         flat = {k: (v if isinstance(v, float) else v.item()) for k, v in stats.items()}
-        print(json.dumps({"epoch": ep, **{k: f"{v:.4f}" for k, v in flat.items()}}, separators=(",", ":")))
+        print(
+            json.dumps({"epoch": ep, **{k: f"{v:.4f}" for k, v in flat.items()}} \
+            , separators=(",", ":"))
+        )
+
+# -----------------------------------------------------
+# Helpers to read patients split
+# -----------------------------------------------------
+
+def read_name_file(path: str | Path) -> List[str]:
+    """ Extract names from parquet split file """
+    df = pd.read_parquet(path)
+    if "name" not in df.columns:
+        raise ValueError(f"{path} must contain a 'name' column")
+    return df["name"].astype(str).tolist()
+
+def indices_from_names(meta_df: pd.DataFrame, names: Sequence[str]) -> list[int]:
+    """ Make indices from names """
+    idx = meta_df.index[meta_df["name"].astype(str).isin(names)].tolist()
+    missing = set(names) - set(meta_df.loc[idx, "name"].astype(str))
+    if missing:
+        raise ValueError(f"Names not found in metadata: {missing}")
+    return idx
+
 
 # -----------------------------------------------------
 # CLI
 # -----------------------------------------------------
 
 def parse_args():
+    """ Argument Parser """
     p = argparse.ArgumentParser()
-    p.add_argument("--data_dir", required=True)
-    p.add_argument("--meta", required=True)
+    p.add_argument("--meta", required=True, help="Path to .parquet files")
+    p.add_argument("--train_names", required=True, help="Path to train.parquet files")
+    p.add_argument("--val_names", required=True, help="Path to val.parquet files")
     p.add_argument("--batch", type=int, default=8)
-    p.add_argument("--in_channels", type=int, default=9)
+    p.add_argument("--in_channels", type=int, default=None, \
+                   help="Override channel count")
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight_decay", type=float, default=1e-2)
     p.add_argument("--patience", type=int, default=3)
     p.add_argument("--pos_weight", type=float)
-    p.add_argument("--arch", "--backbone", dest="backbone", default="resnet18", help="CNN backbone (alias --arch)")
+    p.add_argument("--arch", "--backbone", dest="backbone", default="resnet18", \
+                   help="CNN backbone (alias --arch)")
+    p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
 
 def main():
+    """ Main Function """
     args = parse_args()
-    train_ds = CQ500SliceTripletDataset(args.data_dir, args.meta, split="train", in_channels=args.in_channels)
-    val_ds = CQ500SliceTripletDataset(args.data_dir, args.meta, split="val", in_channels=args.in_channels)
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=4, pin_memory=True)
+    main_meta_df = pd.read_parquet(args.meta)
+    train_n = read_name_file(args.train_names)
+    val_n = read_name_file(args.val_names)
+    overlap = set(train_n) & set(val_n)
+    if overlap:
+        raise ValueError(f"Leakage - Patients present in both train and val splits: {overlap}")
+
+    train_idx = indices_from_names(main_meta_df, train_n)
+    val_idx = indices_from_names(main_meta_df, val_n)
+
+    train_ds = CQ500DataLoader25D(
+        metadata_path="", indices=train_idx
+    )
+    val_ds = CQ500DataLoader25D(
+        metadata_path="", indices=val_idx
+    )
+
+    train_loader = DataLoader(
+        train_ds, batch_size=args.batch, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(
+        val_ds, batch_size=args.batch, shuffle=False, num_workers=4, pin_memory=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_backbone(args.backbone, in_channels=args.in_channels)
+    model = build_backbone(args.backbone)
 
     trainer = Trainer(
         model,
