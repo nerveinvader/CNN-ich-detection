@@ -11,7 +11,7 @@ import pandas as pd
 #import matplotlib.pyplot as plt
 #import pydicom
 #import pydicom.dataset
-from data_loader import CQ500Dataset
+#from data_loader import CQ500Dataset
 #from sklearn.model_selection import GroupShuffleSplit
 
 # %%
@@ -115,7 +115,7 @@ pq.head()
 
 # %%
 # >>> checking one patient / one study / one series / one dicom
-ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
+#ds = CQ500Dataset(manifest_df=pq, labels_df=compact_reads, transform=None)
 # print(f"Studies available: {len(ds)}")	# available studies
 
 # one study: shape and label
@@ -146,3 +146,28 @@ metadata_df = pq.merge(
 metadata_df.head()
 # Assertion to check if there are any phantom rows (row without values - missings)
 # assert not metadata_df['_merge'].eq('left_only').any(), "Some slices missing labels"
+
+#%%
+## Split the data for training.
+import pandas as pd
+from sklearn.model_selection import StratifiedGroupKFold
+
+meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadata.parquet") # load files
+sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+
+for fold, (train_idx, val_idx) in enumerate(
+    sgkf.split(X=meta_df[["name"]],
+    y=meta_df["ICH-majority"], groups=meta_df["name"])
+):
+    if fold == 0:
+        train_patients = meta_df.iloc[train_idx]["name"].tolist()
+        val_patients = meta_df.iloc[val_idx]["name"].tolist()
+        break
+print(f"train = {train_patients}, val = {val_patients}")
+
+train_meta = meta_df[meta_df["name"].isin(train_patients)]
+val_meta = meta_df[meta_df["name"].isin(val_patients)]
+train_meta[["name"]].to_parquet("train_patients.parquet", index=False)
+val_meta[["name"]].to_parquet("val_patients.parquet", index=False)
+
+# %%
