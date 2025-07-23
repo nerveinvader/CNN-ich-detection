@@ -171,3 +171,9 @@ train_meta[["name"]].to_parquet("train_patients.parquet", index=False)
 val_meta[["name"]].to_parquet("val_patients.parquet", index=False)
 
 # %%
+# Checking B1 metadata
+import pandas as pd
+meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadata.parquet") # load files
+meta_df.head()
+#print(len(meta_df))
+# %%
