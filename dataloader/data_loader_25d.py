@@ -39,7 +39,15 @@ class CQ500DataLoader25D(Dataset):
         grouped = self.df.groupby("name", sort = False)
         self.patients: List[Tuple[str, pd.DataFrame]] = list(grouped)
         if indices is not None:
-            self.patients = [self.patients[i] for i in indices]
+            if isinstance(indices[0], int):
+                self.patients = [self.patients[i] for i in indices]
+            elif isinstance(indices[0], str):
+                name_to_idx = {name: (name, pdf) for name, pdf in self.patients}
+                self.patients = [name_to_idx[name] for name in indices if name in name_to_idx]
+            else:
+                raise ValueError(
+                    "The argument for indices must be a list of int or str (patient names)"
+                )
 
         ## Flatten into sample idx list (patient_idx, slice_idx)
         self.sample_index: List[Tuple[int, int]] = []
