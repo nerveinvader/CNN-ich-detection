@@ -8,6 +8,7 @@ Author:			nerveinvader
 from pathlib import Path
 from typing import List, Sequence, Tuple, Dict, Optional
 
+import os
 import numpy as np
 import pandas as pd
 import torch
@@ -127,9 +128,61 @@ class CQ500DataLoader25D(Dataset):
         ## Merge HU channel and slice context dims (slice_ctx, hu_ch, H, W).\
         ## The convention is to keep the slice context and drop the HU channel.\
         ## Because we windowed into HU spaces, each slice context acts as one channel.\
-        x = x_stack.mean(dim = 1)   # (3, H, W) - dim=1 for HU channel
+        #x = x_stack.mean(dim = 1)   # (3, H, W) - dim=1 for HU channel
+        x = x_stack.permute(1, 0, 2, 3).reshape(-1, x_stack.shape[2], x_stack.shape[3]) # (9, H, W)
 
         if self.transform:
             x = self.transform(x)
 
         return x, label
+
+    def preprocess(self, output_dir: str, chunk_size: int = 100, max_ram_gb: int = 12) -> None:
+        """
+        Preprocess DICOMs: convert to tensors and save to disk \
+        in small chunks to avoid exceeding RAM.
+        Args:
+            output_dir: Directory to save tensors (will be created if not exists).
+            chunk_size: Number of slices to process and save at once.
+            max_ram_gb: Maximum RAM (in GB) to use for holding tensors in memory at once.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        dcm_loader = DCMLoader()
+        tensor_buffer = []
+        meta_buffer = []
+        buffer_bytes = 0
+        max_bytes = max_ram_gb * 1024 ** 3
+        chunk_idx = 0
+        print(f"[Preprocess] Saving tensors to {output_dir} \
+            in chunks of {chunk_size} slices, max RAM {max_ram_gb} GB...")
+        for patient_name, pdf in self.patients:
+            pdf_sorted = pdf.sort_values("instance_num")
+            for _, row in pdf_sorted.iterrows():
+                dcm_path = row["path"]
+                instance_num = row["instance_num"]
+                tensor = dcm_loader.dcm_to_tensor(dcm_path)
+                tensor_buffer.append(tensor)
+                meta_buffer.append((patient_name, instance_num, dcm_path))
+                buffer_bytes += tensor.element_size() * tensor.nelement()
+                # Save chunk if buffer is large enough
+                if len(tensor_buffer) >= chunk_size or buffer_bytes >= max_bytes:
+                    chunk_file = os.path.join(output_dir, f"chunk_{chunk_idx:05d}.pt")
+                    meta_file = os.path.join(output_dir, f"chunk_{chunk_idx:05d}_meta.csv")
+                    torch.save(torch.stack(tensor_buffer), chunk_file)
+                    pd.DataFrame(
+                        meta_buffer, columns=["patient_name", "instance_num", "dcm_path"]
+                    ).to_csv(meta_file, index=False)
+                    print(f"  Saved {len(tensor_buffer)} slices to {chunk_file}")
+                    tensor_buffer.clear()
+                    meta_buffer.clear()
+                    buffer_bytes = 0
+                    chunk_idx += 1
+        # Save any remaining tensors
+        if tensor_buffer:
+            chunk_file = os.path.join(output_dir, f"chunk_{chunk_idx:05d}.pt")
+            meta_file = os.path.join(output_dir, f"chunk_{chunk_idx:05d}_meta.csv")
+            torch.save(torch.stack(tensor_buffer), chunk_file)
+            pd.DataFrame(
+                meta_buffer, columns=["patient_name", "instance_num", "dcm_path"]
+            ).to_csv(meta_file, index=False)
+            print(f"  Saved {len(tensor_buffer)} slices to {chunk_file}")
+        print("[Preprocess] Done.")
