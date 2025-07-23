@@ -136,7 +136,11 @@ class CQ500DataLoader25D(Dataset):
 
         return x, label
 
-    def preprocess(self, output_dir: str, chunk_size: int = 100, max_ram_gb: int = 12) -> None:
+    def preprocess(
+        self, output_dir: str,
+        chunk_size: int = 100,
+        max_ram_gb: int = 12
+    ) -> None:
         """
         Preprocess DICOMs: convert to tensors and save to disk \
         in small chunks to avoid exceeding RAM.
