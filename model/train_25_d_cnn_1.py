@@ -4,7 +4,8 @@ Model pipeline
 # 2p5d_cnn_train.py
 import pandas as pd
 import torch.nn as nn
-import torch, torchvision as tv
+import torch
+import torchvision as tv
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from torchmetrics.classification import (

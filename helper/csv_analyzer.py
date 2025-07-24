@@ -178,9 +178,10 @@ val_meta[["name"]].to_parquet("val_patients.parquet", index=False)
 # %%
 # Checking B1 metadata
 import pandas as pd
-meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadat.parquet") # load files
+meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadata.parquet") # load files
 #meta_df.to_csv("b1_metadata_csv.csv", index=False)
-print(len(set(meta_df["name"])))
+for n in sorted(set(meta_df["name"])):
+    print(n, end="\n")
 #meta_5m_df = meta_df[meta_df["slice_thick_mm"] == 5.0].copy()
 #meta_5m_df.head()
 #print(len(meta_df))
