@@ -102,17 +102,8 @@ class CQ500DataLoader25D(Dataset):
         patient_name, pdf = self.patients[patient_idx]
         label = torch.tensor(pdf["ICH-majority"].iloc[0], dtype=torch.float32)
 
-        # Load the volume form cache or disk on-the-fly
-        if self.cache_enabled and patient_name in self._series_cache:
-            volume = self._series_cache[patient_name]   # (S, 3, H, W) torch.Tensor
-        else:
-            pdf_sorted = pdf.sort_values("instance_num")
-            paths = pdf_sorted["path"].tolist()
-            dcm_loader = DCMLoader()
-            slices = [dcm_loader.dcm_to_tensor(path = p) for p in paths]
-            volume = torch.from_numpy(np.stack(slices, axis = 0))   # (S, 3, H, W)
-
-        n_slices = volume.shape[0]
+        pdf_sorted = pdf.sort_values("instance_num")
+        n_slices = len(pdf_sorted)
 
         # Determine neighboring indices with optional edge replication
         def safe_index(i: int) -> int:
@@ -120,16 +111,28 @@ class CQ500DataLoader25D(Dataset):
                 return max(0, min(i, n_slices - 1))
             return i
         prev_idx = safe_index(slice_idx - 1)
+        curr_idx = safe_index(slice_idx)
         next_idx = safe_index(slice_idx + 1)
 
-        x_stack = torch.stack(
-            [volume[prev_idx], volume[slice_idx], volume[next_idx]], dim = 0
-        )   # (3, 3, H, W)
-        ## Merge HU channel and slice context dims (slice_ctx, hu_ch, H, W).\
-        ## The convention is to keep the slice context and drop the HU channel.\
-        ## Because we windowed into HU spaces, each slice context acts as one channel.\
-        #x = x_stack.mean(dim = 1)   # (3, H, W) - dim=1 for HU channel
-        x = x_stack.permute(1, 0, 2, 3).reshape(-1, x_stack.shape[2], x_stack.shape[3]) # (9, H, W)
+        if self.cache_enabled and patient_name in self._series_cache:
+            volume = self._series_cache[patient_name]   # (S, 3, H, W) torch.Tensor
+            x_stack = torch.stack(
+                [volume[prev_idx], volume[curr_idx], volume[next_idx]], dim=0
+            )  # (3, 3, H, W)
+        else:
+            # Only load the three required slices from disk
+            paths = pdf_sorted["path"].tolist()
+            dcm_loader = DCMLoader()
+            needed_indices = [prev_idx, curr_idx, next_idx]
+            x_stack = torch.stack(
+                [dcm_loader.dcm_to_tensor(path=paths[i]) for i in needed_indices], dim=0
+            )  # (3, 3, H, W)
+
+        # Merge HU channel and slice context dims (slice_ctx, hu_ch, H, W)
+        # The convention is to keep the slice context and drop the HU channel.
+        # Because we windowed into HU spaces, each slice context acts as one channel.
+        # x = x_stack.mean(dim=1)   # (3, H, W) - dim=1 for HU channel
+        x = x_stack.permute(1, 0, 2, 3).reshape(-1, x_stack.shape[2], x_stack.shape[3])  # (9, H, W)
 
         if self.transform:
             x = self.transform(x)
@@ -164,6 +167,7 @@ class CQ500DataLoader25D(Dataset):
                 dcm_path = row["path"]
                 instance_num = row["instance_num"]
                 tensor = dcm_loader.dcm_to_tensor(dcm_path)
+                tensor = tensor.to(torch.float16)  # Convert to float16 for efficient storage
                 tensor_buffer.append(tensor)
                 meta_buffer.append((patient_name, instance_num, dcm_path))
                 buffer_bytes += tensor.element_size() * tensor.nelement()
