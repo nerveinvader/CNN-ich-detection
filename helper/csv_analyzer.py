@@ -76,36 +76,41 @@ cat_reads.to_csv('cat_reads.csv', index=False)
 
 # %%
 # >>> loading data with glob module (file and folders are inconsistent with dataset)
+import glob
+import re
+import pydicom
+import pydicom.dataset
+
 DATA_ROOT = "data/"  # the dataset root (contains qct19 locally)
 # CQ500CT9 CQ500CT9 patient folder pattern
 # CQ500CT** CQ500CT**/Unknown Study/Plain **/.dcm files
-# PID = re.compile(r"CQ500CT(\d{1,3})")  # 0-999
-# records = []
+PID = re.compile(r"CQ500CT(\d{1,3})")  # 0-999
+records = []
 
-# for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
-#     folder = PID.search(fp)  # folder names
-#     if not folder:
-#         continue
-#     pid = int(folder.group(1))  # numbers
-#     print(f"CQ500CT{pid}")  # not zero padded - main patient folder
-#     DIR = fp
-#     for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
-#         ds: pydicom.dataset.FileDataset = pydicom.dcmread(
-#             dcm_file, stop_before_pixels=True
-#         )  ## Metadata only
-#         records.append(
-#             {
-#                 "name": f"CQ500-CT-{pid}",
-#                 "series_uid": ds.SeriesInstanceUID,
-#                 "instance_num": ds.get("InstanceNumber", -1),
-#                 "path": dcm_file,
-#                 "slice_thick_mm": float(ds.get("SliceThickness", -1)),
-#                 "series_desc": ds.get("SeriesDescription", ""),
-#             }
-#         )
-# manifest = pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"])
-# manifest.to_parquet("cq500ct_qct19_manifest.parquet", index=False)
-# print("Wrote", len(manifest), "rows")
+for fp in glob.glob(f"{DATA_ROOT}/qct*/*/*/*", recursive=True):
+    folder = PID.search(fp)  # folder names
+    if not folder:
+        continue
+    pid = int(folder.group(1))  # numbers
+    #print(f"CQ500CT{pid}")  # not zero padded - main patient folder
+    DIR = fp
+    for dcm_file in glob.glob(f"{DIR}/*.dcm", recursive=True):
+        ds: pydicom.dataset.FileDataset = pydicom.dcmread(
+            dcm_file, stop_before_pixels=True
+        )  ## Metadata only
+        records.append(
+            {
+                "name": f"CQ500-CT-{pid}",
+                "series_uid": ds.SeriesInstanceUID,
+                "instance_num": ds.get("InstanceNumber", -1),
+                "path": dcm_file,
+                "slice_thick_mm": float(ds.get("SliceThickness", -1)),
+                "series_desc": ds.get("SeriesDescription", ""),
+            }
+        )
+manifest = pd.DataFrame(records).sort_values(["name", "series_uid", "instance_num"])
+manifest.to_parquet("cq500ct_manifest.parquet", index=False)
+print("Wrote", len(manifest), "rows")
 
 # %%
 # >>> checking parquet file
@@ -173,7 +178,11 @@ val_meta[["name"]].to_parquet("val_patients.parquet", index=False)
 # %%
 # Checking B1 metadata
 import pandas as pd
-meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadata.parquet") # load files
-meta_df.head()
+meta_df = pd.read_parquet("../kaggle-py/metadata/b1_metadat.parquet") # load files
+#meta_df.to_csv("b1_metadata_csv.csv", index=False)
+print(len(set(meta_df["name"])))
+#meta_5m_df = meta_df[meta_df["slice_thick_mm"] == 5.0].copy()
+#meta_5m_df.head()
 #print(len(meta_df))
+#print(len(set(meta_5m_df["name"])))
 # %%
